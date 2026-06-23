@@ -1,0 +1,260 @@
+<!DOCTYPE html> 
+
+<html lang="de"> 
+
+<head> 
+    <meta charset="UTF-8"> 
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"> 
+    <title>Partikel Effekt - "Z"</title> 
+
+    <style> 
+        * { 
+            margin: 0; 
+            padding: 0; 
+            box-sizing: border-box; 
+        } 
+
+        body { 
+            background-color: #0b111e; /* Dunkler Hintergrund wie auf dem Screenshot */ 
+            overflow: hidden; 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            height: 100vh; 
+        } 
+
+        canvas { 
+            display: block; 
+        } 
+
+    </style> 
+
+</head> 
+
+<body> 
+    <canvas id="particleCanvas"></canvas> 
+
+    <script> 
+
+        const canvas = document.getElementById('particleCanvas'); 
+        const ctx = canvas.getContext('2d'); 
+
+        // Canvas auf die Größe des Bildschirms bringen 
+        canvas.width = window.innerWidth; 
+        canvas.height = window.innerHeight; 
+
+        let particleArray = []; 
+        const numberOfParticles = 1500; // Anzahl der Partikel für das "Z" 
+
+        // Maus-Objekt, um die Position und den Radius des "Schubsens" zu speichern 
+        const mouse = { 
+            x: null, 
+            y: null, 
+            radius: 80 // Wie nah die Maus kommen muss, um Partikel zu bewegen 
+        } 
+
+        // Mausbewegung registrieren 
+        window.addEventListener('mousemove', function(event) { 
+            mouse.x = event.x; 
+            mouse.y = event.y; 
+        }); 
+
+        // Maus verlässt den Bildschirm -> Effekt stoppen 
+        window.addEventListener('mouseout', function() { 
+            mouse.x = null; 
+            mouse.y = null; 
+        }); 
+
+ 
+
+// Bauplan für einen einzelnen Partikel
+        class Particle {
+            constructor(x, y) {
+                this.baseX = x; // Die feste "Heimat" im Z
+                this.baseY = y;
+                this.x = x;     // Die aktuelle Position
+                this.y = y;
+                this.size = 0.5;  // Größe des Partikels in Pixeln
+                
+                // Ein zufälliger Faktor für das Wegschubsen durch die Maus
+                this.density = (Math.random() * 30) + 1; 
+                
+                // --- NEU: Werte für eine stärkere Eigenbewegung im Ruhemodus ---
+                this.angleX = Math.random() * Math.PI * 2; // Zufälliger Startwinkel X
+                this.angleY = Math.random() * Math.PI * 2; // Zufälliger Startwinkel Y
+                
+                // HIER REGLER 1: Wie schnell sie sich bewegen (Höher = schnelleres Wackeln)
+                this.wobbleSpeedX = Math.random() * 0.10 + 0.03; 
+                this.wobbleSpeedY = Math.random() * 0.10 + 0.03; 
+                
+                // HIER REGLER 2: Wie weit sie ausschlagen (Höher = größere Bewegung/Ausschlag)
+                this.wobbleRadius = Math.random() * 4 + 4; 
+            }
+
+            // Zeichnet den Partikel auf die Leinwand
+            draw() {
+                ctx.fillStyle = '#3b82f6'; // Ein schönes, modernes Blau
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.closePath();
+                ctx.fill();
+            }
+
+            // Berechnet die Bewegung des Partikels
+            update() {
+                // 1. Viel stärkere Eigenbewegung im Ruhezustand berechnen
+                this.angleX += this.wobbleSpeedX;
+                this.angleY += this.wobbleSpeedY;
+                
+                // Das neue, dynamischere "Zuhause" des Partikels schwankt jetzt deutlich mehr
+                let currentHomeX = this.baseX + Math.sin(this.angleX) * this.wobbleRadius;
+                let currentHomeY = this.baseY + Math.cos(this.angleY) * this.wobbleRadius;
+
+                // 2. Interaktion mit der Maus
+                let dx = mouse.x - this.x;
+                let dy = mouse.y - this.y;
+                let distance = Math.hypot(dx, dy);
+
+                if (distance < mouse.radius) {
+                    let force = (mouse.radius - distance) / mouse.radius;
+                    let forceDirectionX = dx / distance;
+                    let forceDirectionY = dy / distance;
+
+                    this.x -= forceDirectionX * force * this.density;
+                    this.y -= forceDirectionY * force * this.density;
+                } else {
+                    // 3. Zurückkehren zur dynamischen Heimat-Koordinate
+                    if (this.x !== currentHomeX) {
+                        let dxHome = this.x - currentHomeX;
+                        this.x -= dxHome / 10; // Etwas agileres Zurückfedern
+                    }
+                    if (this.y !== currentHomeY) {
+                        let dyHome = this.y - currentHomeY;
+                        this.y -= dyHome / 10;
+                    }
+                }
+            }
+        } 
+
+        // Hilfsfunktion: Berechnet ein perfektes Z mit absolut geraden Außenkanten
+        function generateZPoints() {
+            const points = [];
+            
+            const offscreenCanvas = document.createElement('canvas');
+            offscreenCanvas.width = canvas.width;
+            offscreenCanvas.height = canvas.height;
+            const oCtx = offscreenCanvas.getContext('2d');
+            
+            oCtx.fillStyle = 'white';
+            oCtx.strokeStyle = 'white';
+            oCtx.lineWidth = 100; // Dicke der Linien
+            oCtx.lineCap = 'butt'; // Verhindert das Überstehen an den Enden
+            oCtx.lineJoin = 'miter';
+            
+            const size = 350; // Gesamtgröße des Z
+            const x = canvas.width / 2;
+            const y = canvas.height / 2;
+
+            const topY = y - size/2;
+            const bottomY = y + size/2;
+            const leftX = x - size/2;
+            const rightX = x + size/2;
+            
+            // --- TRICK: Wir zeichnen das Z in Schritten und nutzen Clip (Ausschneiden) ---
+            
+            // 1. Der obere Balken
+            oCtx.fillRect(leftX, topY - oCtx.lineWidth/2, size, oCtx.lineWidth);
+            
+            // 2. Der untere Balken
+            oCtx.fillRect(leftX, bottomY - oCtx.lineWidth/2, size, oCtx.lineWidth);
+            
+            // 3. Die schräge Linie – aber wir schneiden sie an den Seiten perfekt ab!
+            oCtx.save();
+            oCtx.beginPath();
+            // Wir erlauben dem Pinsel NUR in diesem quadratischen Bereich zu zeichnen
+            oCtx.rect(leftX, topY - oCtx.lineWidth/2, size, size + oCtx.lineWidth);
+            oCtx.clip(); 
+            
+            // Jetzt zeichnen wir die schräge Verbindung
+            oCtx.beginPath();
+            oCtx.moveTo(rightX, topY);
+            oCtx.lineTo(leftX, bottomY);
+            oCtx.stroke();
+            oCtx.restore();
+            
+            // Die Bilddaten auslesen und Partikel wie gehabt verteilen
+            const imgData = oCtx.getImageData(0, 0, canvas.width, canvas.height).data;
+            const minDistance = 7; 
+            const gridCellSize = minDistance / Math.sqrt(2);
+            const gridWidth = Math.ceil(canvas.width / gridCellSize);
+            const gridHeight = Math.ceil(canvas.height / gridCellSize);
+            const grid = new Array(gridWidth * gridHeight).fill(null);
+            
+            for (let yCoord = 0; yCoord < canvas.height; yCoord += 4) {
+                for (let xCoord = 0; xCoord < canvas.width; xCoord += 4) {
+                    const alphaIndex = (xCoord + yCoord * canvas.width) * 4 + 3;
+                    if (imgData[alphaIndex] > 128) {
+                        const gridX = Math.floor(xCoord / gridCellSize);
+                        const gridY = Math.floor(yCoord / gridCellSize);
+                        let tooClose = false;
+                        
+                        for (let nx = Math.max(0, gridX - 2); nx <= Math.min(gridWidth - 1, gridX + 2); nx++) {
+                            for (let ny = Math.max(0, gridY - 2); ny <= Math.min(gridHeight - 1, gridY + 2); ny++) {
+                                const p = grid[nx + ny * gridWidth];
+                                if (p && Math.hypot(p.x - xCoord, p.y - yCoord) < minDistance) {
+                                    tooClose = true;
+                                    break;
+                                }
+                            }
+                            if (tooClose) break;
+                        }
+                        
+                        if (!tooClose) {
+                            const newPoint = { x: xCoord, y: yCoord };
+                            points.push(newPoint);
+                            grid[gridX + gridY * gridWidth] = newPoint;
+                        }
+                    }
+                }
+            }
+            return points;
+        }
+
+        // Initialisierung: Partikel-Objekte erstellen
+        function init() {
+            particleArray = [];
+            const zCoordinates = generateZPoints(); // Klammer leer lassen!
+            
+            for (let i = 0; i < zCoordinates.length; i++) {
+                particleArray.push(new Particle(zCoordinates[i].x, zCoordinates[i].y));
+            }
+        }
+
+        // Die Animationsschleife (wird ca. 60 Mal pro Sekunde aufgerufen) 
+        function animate() { 
+            ctx.clearRect(0, 0, canvas.width, canvas.height); // Bildschirm leeren 
+
+            for (let i = 0; i < particleArray.length; i++) { 
+                particleArray[i].update(); // Neue Position berechnen 
+                particleArray[i].draw();   // Neu zeichnen 
+            } 
+
+            requestAnimationFrame(animate); // Nächsten Frame anfordern 
+        } 
+
+        // Fenster-Resizing abfangen 
+        window.addEventListener('resize', function() { 
+            canvas.width = window.innerWidth; 
+            canvas.height = window.innerHeight; 
+            init(); 
+        }); 
+
+        // Startschuss 
+        init(); 
+        animate(); 
+
+    </script> 
+
+</body> 
+
+</html> 
